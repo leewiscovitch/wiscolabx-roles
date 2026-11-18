@@ -1,0 +1,17 @@
+---
+argument_specs:
+  main:
+    short_description: A controller's DNS service, its forwarders and scavenging
+    description:
+      - Sets the DNS service's forwarders to exactly the given list, turns scavenging on at the given interval and
+        aging on for every directory-integrated primary zone. Changes only what differs.
+    options:
+      ad_dns_forwarders:
+        type: list
+        elements: str
+        required: true
+        description: Addresses everything outside the controller's own zones is forwarded to (192.0.2.53).
+      ad_dns_scavenging_interval:
+        type: str
+        default: "7.00:00:00"
+        description: The scavenging interval, a TimeSpan string (days.hours:minutes:seconds).

@@ -1,0 +1,63 @@
+---
+# A controller's DNS service (README.md): forwarders, scavenging, aging. One script that reads first and changes only
+# what differs, so a second run is changed=0 and check mode says what it would change ($Ansible.CheckMode).
+- name: The forwarder list is not empty
+  ansible.builtin.assert:
+    that: ad_dns_forwarders | length > 0
+    fail_msg: ad_dns_forwarders is empty; give at least one address
+    quiet: true
+
+- name: Forwarders, scavenging and aging
+  ansible.windows.win_powershell:
+    script: |
+      [CmdletBinding(SupportsShouldProcess)]
+      param ([string[]]$Forwarders, [string]$Interval)
+      # Check mode runs this with -WhatIf, and the DNS cmdlets (CIM based) then read nothing: every change below is
+      # guarded by $Ansible.CheckMode instead
+      $WhatIfPreference = $false
+      $Ansible.Changed = $false
+      if (-not (Get-Command Get-DnsServerForwarder -ErrorAction SilentlyContinue)) {
+          if ($Ansible.CheckMode) {
+              $Ansible.Changed = $true
+              "No DNS service yet: would set forwarders $($Forwarders -join ', '), scavenging every $Interval"
+              return
+          }
+          throw 'The DNS Server role is not installed (Get-DnsServerForwarder is missing): is this a controller?'
+      }
+      $want = [TimeSpan]::Parse($Interval)
+
+      $now = @((Get-DnsServerForwarder).IPAddress | ForEach-Object IPAddressToString)
+      if (($now -join ',') -ne ($Forwarders -join ',')) {
+          $Ansible.Changed = $true
+          "forwarders: $($now -join ', ') -> $($Forwarders -join ', ')"
+          if (-not $Ansible.CheckMode) { Set-DnsServerForwarder -IPAddress $Forwarders }
+      }
+
+      $s = Get-DnsServerScavenging
+      if (-not $s.ScavengingState -or $s.ScavengingInterval -ne $want) {
+          $Ansible.Changed = $true
+          "scavenging: $($s.ScavengingState) every $($s.ScavengingInterval) -> True every $want"
+          if (-not $Ansible.CheckMode) { Set-DnsServerScavenging -ScavengingState $true -ScavengingInterval $want }
+      }
+
+      # Aging decides which records scavenging may remove: only zones with it on are swept. The directory's own
+      # zones (the domain, _msdcs), not TrustAnchors (DNSSEC's) and not the automatic ones
+      $zones = Get-DnsServerZone | Where-Object {
+          $_.IsDsIntegrated -and $_.ZoneType -eq 'Primary' -and -not $_.IsAutoCreated -and $_.ZoneName -ne 'TrustAnchors'
+      }
+      foreach ($z in $zones) {
+          if (-not (Get-DnsServerZoneAging -Name $z.ZoneName).AgingEnabled) {
+              $Ansible.Changed = $true
+              "aging on: $($z.ZoneName)"
+              if (-not $Ansible.CheckMode) { Set-DnsServerZoneAging -Name $z.ZoneName -Aging $true }
+          }
+      }
+    parameters:
+      Forwarders: "{{ ad_dns_forwarders }}"
+      Interval: "{{ ad_dns_scavenging_interval }}"
+  register: ad_dns_result
+
+- name: What changed (or would)
+  ansible.builtin.debug:
+    msg: "{{ ad_dns_result.output }}"
+  when: ad_dns_result.output | length > 0   # the script prints a line for each change only

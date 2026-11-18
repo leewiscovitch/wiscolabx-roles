@@ -1,0 +1,88 @@
+---
+# A new forest on this machine (README.md). Every read is local: the key or password session Ansible has is enough.
+
+# The argument spec (meta/argument_specs.yml) has already stopped a run that lacks a variable. Here the one rule it
+# can't check: a recovery password Windows would refuse. Windows only says so deep inside the promotion (and a
+# no_log task hides that), so it is checked first. The check yields a yes or no, never the value
+- name: Check the recovery password's length and character classes
+  ansible.builtin.set_fact:
+    ad_forest_password_ok: >-
+      {{ ad_forest_safe_mode_password | length >= 8 and
+         ([ad_forest_safe_mode_password is search('[A-Z]'), ad_forest_safe_mode_password is search('[a-z]'),
+           ad_forest_safe_mode_password is search('[0-9]'), ad_forest_safe_mode_password is search('[^A-Za-z0-9]')]
+          | select | list | length) >= 3 }}
+  no_log: true
+
+- name: The recovery password is one Windows accepts
+  ansible.builtin.assert:
+    that: ad_forest_password_ok | bool
+    fail_msg: >-
+      ad_forest_safe_mode_password is not one Windows accepts: it wants at least 8 characters from three of
+      upper case, lower case, digits and other characters (the value is not shown)
+    quiet: true
+
+- name: AD DS and DNS, with their management tools
+  ansible.windows.win_feature:
+    name: [AD-Domain-Services, DNS]
+    include_management_tools: true
+    state: present
+
+# no_log hides the error with the password; the rescue reads the promotion's own log instead (it holds no password)
+- name: The forest
+  block:
+    - name: Make the forest and reboot (a controller already is left alone)
+      microsoft.ad.domain:
+        dns_domain_name: "{{ ad_forest_domain }}"
+        domain_netbios_name: "{{ ad_forest_netbios }}"
+        safe_mode_password: "{{ ad_forest_safe_mode_password }}"
+        install_dns: true
+        reboot: true
+        reboot_timeout: "{{ ad_forest_ready_timeout }}"
+      register: ad_forest_promotion
+      no_log: true
+  rescue:
+    - name: Read the end of the promotion's log
+      ansible.windows.win_powershell:
+        script: |
+          $f = "$env:SystemRoot\debug\dcpromo.log"
+          if (Test-Path $f) { Get-Content $f -Tail 15 } else { "no $f" }
+      register: ad_forest_dcpromo_log
+      changed_when: false
+      check_mode: false
+      ignore_unreachable: true
+
+    - name: Say why it failed
+      ansible.builtin.fail:
+        msg:
+          - Making the forest {{ ad_forest_domain }} failed (the module's error is hidden by no_log).
+          - "The end of C:\\Windows\\debug\\dcpromo.log:"
+          - "{{ ad_forest_dcpromo_log.output | default(['the machine did not answer: the reboot or the login after it']) }}"
+
+- name: What would be made (check mode)
+  ansible.builtin.debug:
+    msg: >-
+      Would make the forest {{ ad_forest_domain }} (NetBIOS {{ ad_forest_netbios }}) with DNS on this machine and
+      reboot it; nothing below can be read until then
+  when: ansible_check_mode and ad_forest_promotion is changed
+
+# Ready means: the directory and its web service run (the AD cmdlets and the microsoft.ad modules need ADWS), and
+# SYSVOL is replicated in and shared, which is what makes this a working controller (nltest /dsgetdc finds it)
+- name: Wait until the directory is ready
+  ansible.windows.win_powershell:
+    script: |
+      $r = [ordered]@{
+          ntds = (Get-Service NTDS -ErrorAction SilentlyContinue).Status -eq 'Running'
+          adws = (Get-Service ADWS -ErrorAction SilentlyContinue).Status -eq 'Running'
+          sysvol_ready = (Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters `
+              -Name SysvolReady -ErrorAction SilentlyContinue).SysvolReady -eq 1
+          shares = @(Get-SmbShare -Name SYSVOL, NETLOGON -ErrorAction SilentlyContinue).Count -eq 2
+      }
+      $r.ready = $r.ntds -and $r.adws -and $r.sysvol_ready -and $r.shares
+      $r
+  register: ad_forest_ready
+  until: ad_forest_ready.output[0].ready
+  retries: "{{ (ad_forest_ready_timeout | int / 10) | round(0, 'ceil') | int }}"
+  delay: 10
+  changed_when: false
+  check_mode: false
+  when: not (ansible_check_mode and ad_forest_promotion is changed)

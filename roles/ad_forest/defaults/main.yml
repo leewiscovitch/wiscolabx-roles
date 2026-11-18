@@ -1,0 +1,6 @@
+---
+# Required, no default (meta/argument_specs.yml): ad_forest_domain, ad_forest_netbios, ad_forest_safe_mode_password.
+# How long to wait, in seconds, for the machine to come back after the promotion's reboot and for the directory to
+# be ready (NTDS and ADWS running, SYSVOL shared). A promotion takes about two minutes; a failed login after the
+# reboot only shows when this runs out.
+ad_forest_ready_timeout: 900

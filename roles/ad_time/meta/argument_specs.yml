@@ -1,0 +1,14 @@
+---
+argument_specs:
+  main:
+    short_description: A controller's time, by its place in the domain
+    description:
+      - The controller that holds the PDC emulator (DomainRole 5) follows the given NTP servers and announces
+        itself a reliable time source; every other controller (DomainRole 4) follows the domain's hierarchy, as
+        members do by default. Changes only what differs; then asks the time service to sync again.
+    options:
+      ad_time_ntp_servers:
+        type: list
+        elements: str
+        required: true
+        description: NTP servers (names or addresses) for the PDC emulator (192.0.2.123).

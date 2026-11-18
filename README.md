@@ -27,7 +27,8 @@ ansible-galaxy collection install -r requirements.yml
 
 ## Roles
 
-None yet. Planned, each with its own `README.md` (variables, and the steps by hand it stands for):
+Each with its own `README.md` (variables, and the steps by hand it stands for). Written so far: `ad_forest`,
+`ad_dns`, `ad_time`; the others are planned:
 
 | Role | Runs on | Does |
 |---|---|---|

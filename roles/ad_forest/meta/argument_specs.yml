@@ -1,0 +1,29 @@
+---
+argument_specs:
+  main:
+    short_description: A new forest on the first controller, with its DNS
+    description:
+      - Installs AD DS and DNS with their management tools, makes a new forest (Install-ADDSForest), reboots and
+        waits until the directory answers. A machine that is a controller already is left alone.
+      - Makes a new forest whenever the machine is no controller. Whether that is right (no other controller of a
+        domain of that name exists) is the caller's to decide.
+    options:
+      ad_forest_domain:
+        type: str
+        required: true
+        description: The forest root domain's DNS name (example.test).
+      ad_forest_netbios:
+        type: str
+        required: true
+        description: The domain's NetBIOS (short) name, at most 15 characters (EXAMPLE).
+      ad_forest_safe_mode_password:
+        type: str
+        required: true
+        no_log: true
+        description:
+          - The Directory Services Restore Mode password. At least 8 characters, from three of upper case, lower
+            case, digits and other characters.
+      ad_forest_ready_timeout:
+        type: int
+        default: 900
+        description: Seconds to wait for the reboot and for the directory to be ready.

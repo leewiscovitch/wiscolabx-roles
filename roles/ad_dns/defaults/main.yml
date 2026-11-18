@@ -1,0 +1,6 @@
+---
+# Required, no default (meta/argument_specs.yml): ad_dns_forwarders.
+# How often the DNS service removes stale records, as a TimeSpan ("days.hours:minutes:seconds"). Aging is turned on
+# for every directory-integrated zone, so only records that registered themselves (and then stopped) go; static ones
+# never age.
+ad_dns_scavenging_interval: "7.00:00:00"
