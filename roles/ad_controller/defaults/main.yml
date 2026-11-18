@@ -1,0 +1,8 @@
+---
+# Required, no default (meta/argument_specs.yml): ad_controller_domain, ad_controller_domain_admin_user,
+# ad_controller_domain_admin_password, ad_controller_safe_mode_password.
+# How long to wait, in seconds, for the machine to come back after the promotion's reboot and for the directory to
+# be ready (NTDS and ADWS running, SYSVOL replicated in and shared). A promotion takes about two minutes; SYSVOL
+# comes only with the first replication from a partner, and a failed login after the reboot only shows when this
+# runs out.
+ad_controller_ready_timeout: 1800
