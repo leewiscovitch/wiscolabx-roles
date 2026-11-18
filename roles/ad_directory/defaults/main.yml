@@ -1,0 +1,12 @@
+---
+# Required when a user has no password of its own (the first task checks): the users' starting password
+ad_directory_user_password: ""
+# What to make, parents first. Each list may be empty; nothing outside them is touched or removed.
+ad_directory_ous: []           # {name, path}: path is the parent's distinguished name
+ad_directory_groups: []        # {name, path, scope (global, domainlocal, universal), description}
+ad_directory_users: []         # {name, path, firstname, surname, groups: [], password}
+ad_directory_memberships: []   # {group, members: []}: members added, never set
+# Optional: a domain admin the modules use instead of the session's own credentials (a session that has none to
+# pass on reaches only the controller it runs on). Empty: the session's own
+ad_directory_domain_admin_user: ""
+ad_directory_domain_admin_password: ""

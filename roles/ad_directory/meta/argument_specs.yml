@@ -1,0 +1,48 @@
+---
+argument_specs:
+  main:
+    short_description: OUs, groups, users and group memberships in an existing domain
+    description:
+      - Makes the given organizational units, groups and users and adds the given members to groups. Nothing it is
+        not given is changed or removed; a user's password is set only when the user is made.
+      - Runs on a domain controller (or a machine with the AD module for PowerShell and a reachable controller).
+    options:
+      ad_directory_ous:
+        type: list
+        elements: dict
+        default: []
+        description: The OUs, parents first, each {name, path}; path is the parent's distinguished name.
+      ad_directory_groups:
+        type: list
+        elements: dict
+        default: []
+        description:
+          - The groups, each {name, path, scope, description}. scope is global, domainlocal or universal (default
+            global); description is optional. Security groups.
+      ad_directory_users:
+        type: list
+        elements: dict
+        default: []
+        description:
+          - The users, each {name, path, firstname, surname, groups, password}. name is the account name (and the
+            object's name); groups are added, never set; password is optional (default ad_directory_user_password)
+            and set only when the user is made.
+      ad_directory_user_password:
+        type: str
+        default: ""
+        no_log: true
+        description: The password of every user that has none of its own. Required when such a user is given.
+      ad_directory_memberships:
+        type: list
+        elements: dict
+        default: []
+        description: Members to add to groups, each {group, members}. Members are added, never set.
+      ad_directory_domain_admin_user:
+        type: str
+        default: ""
+        description: Optional, a domain admin for the modules (admin@example.test). Empty, the session's own.
+      ad_directory_domain_admin_password:
+        type: str
+        default: ""
+        no_log: true
+        description: That user's password.

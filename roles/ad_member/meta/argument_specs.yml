@@ -1,0 +1,32 @@
+---
+argument_specs:
+  main:
+    short_description: Joins the machine to an existing domain, with the reboot
+    description:
+      - Joins the machine to the domain under its own computer name (Add-Computer), into the given OU, and reboots
+        it. A machine that is a member of the domain already is left alone. The host name is not changed.
+      - The machine must find the domain through its DNS client before it starts.
+    options:
+      ad_member_domain:
+        type: str
+        required: true
+        description: The DNS name of the domain to join (example.test).
+      ad_member_domain_admin_user:
+        type: str
+        required: true
+        description: A user allowed to join machines to the domain, as user@domain (admin@example.test).
+      ad_member_domain_admin_password:
+        type: str
+        required: true
+        no_log: true
+        description: That user's password.
+      ad_member_ou:
+        type: str
+        default: ""
+        description:
+          - The OU for the computer object (OU=servers,DC=example,DC=test). Empty, the domain's default. Only used
+            when joining.
+      ad_member_reboot_timeout:
+        type: int
+        default: 900
+        description: Seconds to wait for the machine after the join's reboot.

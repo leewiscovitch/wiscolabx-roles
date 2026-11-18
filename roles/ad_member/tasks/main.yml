@@ -1,0 +1,42 @@
+---
+# The machine into the domain (README.md). The module joins and reboots; the account Ansible logs in as must still
+# be able to log in after the join (a local account stays one: the join keeps the local accounts).
+
+# no_log hides the error with the password; the rescue reads the join's own log instead (it holds none)
+- name: The join
+  block:
+    - name: Join the domain and reboot (a member already is left alone)
+      microsoft.ad.membership:
+        state: domain
+        dns_domain_name: "{{ ad_member_domain }}"
+        domain_admin_user: "{{ ad_member_domain_admin_user }}"
+        domain_admin_password: "{{ ad_member_domain_admin_password }}"
+        domain_ou_path: "{{ ad_member_ou | default(omit, true) }}"
+        reboot: true
+        reboot_timeout: "{{ ad_member_reboot_timeout }}"
+      register: ad_member_join
+      no_log: true
+  rescue:
+    - name: Read the end of the join's log
+      ansible.windows.win_powershell:
+        script: |
+          $f = "$env:SystemRoot\debug\NetSetup.LOG"
+          if (Test-Path $f) { Get-Content $f -Tail 20 } else { "no $f" }
+      register: ad_member_netsetup_log
+      changed_when: false
+      check_mode: false
+      ignore_unreachable: true
+
+    - name: Say why it failed
+      ansible.builtin.fail:
+        msg:
+          - Joining this machine to {{ ad_member_domain }} failed (the module's error is hidden by no_log).
+          - "The end of C:\\Windows\\debug\\NetSetup.LOG:"
+          - "{{ ad_member_netsetup_log.output | default(['the machine did not answer: the reboot or the login after it']) }}"
+
+- name: What would be done (check mode)
+  ansible.builtin.debug:
+    msg: >-
+      Would join this machine to {{ ad_member_domain }}{{ (' into ' ~ ad_member_ou) if ad_member_ou else '' }} as
+      {{ ad_member_domain_admin_user }}, and reboot it
+  when: ansible_check_mode and ad_member_join is changed

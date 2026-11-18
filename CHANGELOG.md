@@ -3,6 +3,13 @@
 Newest first. The version is `galaxy.yml`'s; each lab installs the collection at a commit, so a change that
 alters a role's variables or behaviour also says so here.
 
+## 0.4.0 (2026-11-18)
+
+- New role `ad_directory`: OUs, groups, users (the password only when one is made) and members added to groups;
+  checks each user's password against the domain's policy before it starts; never removes
+- New role `ad_member`: joins the machine to a domain into a given OU, with the reboot; reads `NetSetup.LOG` when it
+  fails
+
 ## 0.3.0 (2026-11-18)
 
 - New role `ad_controller`: a further controller of an existing domain, with DNS and a global catalog, the

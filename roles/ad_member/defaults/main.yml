@@ -1,0 +1,8 @@
+---
+# Required, no default (meta/argument_specs.yml): ad_member_domain, ad_member_domain_admin_user,
+# ad_member_domain_admin_password.
+# The OU the computer object is made in, as a distinguished name; empty: the domain's default (CN=Computers). Only
+# used for the join: a machine that is a member already is not moved
+ad_member_ou: ""
+# Seconds to wait for the machine to come back after the join's reboot
+ad_member_reboot_timeout: 900

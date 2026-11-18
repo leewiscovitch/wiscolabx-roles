@@ -1,0 +1,129 @@
+---
+# The directory's content (README.md): OUs, groups, users, then members added to groups. Everything is made or
+# left as it is; nothing that is not listed is touched. Parents first: each list is applied in its own order.
+
+# A user without a password of its own takes ad_directory_user_password, which then must be set (the argument spec
+# can't say "required when")
+- name: Every user has a password to be made with
+  ansible.builtin.assert:
+    that: >-
+      ad_directory_users | rejectattr('password', 'defined') | list | length == 0
+      or (ad_directory_user_password | default('') | length > 0)
+    fail_msg: >-
+      ad_directory_user_password is not set, and these users have no password of their own:
+      {{ ad_directory_users | rejectattr('password', 'defined') | map(attribute='name') | join(', ') }}
+    quiet: true
+
+# A password the domain refuses only shows deep inside the module, and no_log hides why. So the domain's own policy
+# is read (length, complexity) and each user's password checked against it first; the check yields user names, never
+# a value. Complexity as Windows applies it: three of upper case, lower case, digits and other characters, and not
+# the account name in it (names of three or more characters)
+- name: Read the domain's password policy
+  ansible.windows.win_powershell:
+    script: |
+      $p = Get-ADDefaultDomainPasswordPolicy
+      [ordered]@{ min_length = [int]$p.MinPasswordLength; complexity = [bool]$p.ComplexityEnabled }
+  register: ad_directory_policy
+  changed_when: false
+  check_mode: false
+  when: ad_directory_users | length > 0
+
+- name: Check each user's password against it
+  vars:
+    ad_directory_p: "{{ ad_directory_policy.output[0] | default({}) }}"
+  ansible.builtin.set_fact:
+    ad_directory_weak: >-
+      {% set r = [] %}{% for u in ad_directory_users %}{% set pw = u.password | default(ad_directory_user_password) %}
+      {%- set classes = [pw is search('[A-Z]'), pw is search('[a-z]'), pw is search('[0-9]'),
+                         pw is search('[^A-Za-z0-9]')] | select | list | length %}
+      {%- set has_name = u.name | length >= 3 and (u.name | lower) in (pw | lower) %}
+      {%- if pw | length < ad_directory_p.min_length | default(0) or (ad_directory_p.complexity | default(false)
+             and (classes < 3 or has_name)) %}{% set _ = r.append(u.name) %}{% endif %}{% endfor %}{{ r }}
+  no_log: true
+  when: ad_directory_users | length > 0
+
+- name: Every password is one the domain accepts
+  vars:
+    ad_directory_p: "{{ ad_directory_policy.output[0] | default({}) }}"
+    ad_directory_own: "{{ ad_directory_users | selectattr('password', 'defined') | map(attribute='name') | list }}"
+  ansible.builtin.assert:
+    that: ad_directory_weak | default([]) | length == 0
+    fail_msg: >-
+      The domain would refuse the password of {{ ad_directory_weak | join(', ') }}
+      ({% for n in ad_directory_weak %}{{ ('its own password in ad_directory_users' if n in ad_directory_own
+      else 'ad_directory_user_password') }}{{ ', ' if not loop.last else '' }}{% endfor %}): the domain wants at
+      least {{ ad_directory_p.min_length }} characters{{ ', from three of upper case, lower case, digits and other
+      characters, without the account name' if ad_directory_p.complexity else '' }} (the value is not shown)
+    quiet: true
+  when: ad_directory_users | length > 0
+
+- name: The OUs
+  microsoft.ad.ou:
+    name: "{{ item.name }}"
+    path: "{{ item.path }}"
+    state: present
+    domain_username: "{{ ad_directory_domain_admin_user | default(omit, true) }}"
+    domain_password: "{{ ad_directory_domain_admin_password | default(omit, true) }}"
+  loop: "{{ ad_directory_ous }}"
+  loop_control:
+    label: "OU={{ item.name }},{{ item.path }}"
+
+# In check mode a group or OU made by an earlier task is not there yet: lookups then warn instead of failing
+- name: The groups
+  microsoft.ad.group:
+    name: "{{ item.name }}"
+    path: "{{ item.path }}"
+    scope: "{{ item.scope | default('global') }}"
+    category: security
+    description: "{{ item.description | default(omit, true) }}"
+    state: present
+    domain_username: "{{ ad_directory_domain_admin_user | default(omit, true) }}"
+    domain_password: "{{ ad_directory_domain_admin_password | default(omit, true) }}"
+  loop: "{{ ad_directory_groups }}"
+  loop_control:
+    label: "CN={{ item.name }},{{ item.path }}"
+
+# update_password on_create: the password is the starting one; the module's default (always) would report a change
+# on every run. no_log for the password: the rescue says which users there were, not why (the error is hidden)
+- name: The users
+  block:
+    - name: The users (the password only when one is made)
+      microsoft.ad.user:
+        name: "{{ item.name }}"
+        sam_account_name: "{{ item.name }}"
+        upn: "{{ item.upn | default(omit) }}"
+        path: "{{ item.path }}"
+        firstname: "{{ item.firstname | default(omit) }}"
+        surname: "{{ item.surname | default(omit) }}"
+        password: "{{ item.password | default(ad_directory_user_password) }}"
+        update_password: on_create
+        enabled: true
+        groups:
+          add: "{{ item.groups | default([]) }}"
+          lookup_failure_action: "{{ 'warn' if ansible_check_mode else 'fail' }}"
+        state: present
+        domain_username: "{{ ad_directory_domain_admin_user | default(omit, true) }}"
+        domain_password: "{{ ad_directory_domain_admin_password | default(omit, true) }}"
+      loop: "{{ ad_directory_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+      no_log: true
+  rescue:
+    - name: Say which step failed
+      ansible.builtin.fail:
+        msg: >-
+          Making or updating the users {{ ad_directory_users | map(attribute='name') | join(', ') }} failed (the
+          module's error is hidden by no_log). Common causes: a group in a user's groups does not exist, the path does
+          not exist, the password is refused by a fine-grained policy. Try the user by hand (README.md)
+
+- name: Members added to groups
+  microsoft.ad.group:
+    identity: "{{ item.group }}"
+    members:
+      add: "{{ item.members }}"
+      lookup_failure_action: "{{ 'warn' if ansible_check_mode else 'fail' }}"
+    domain_username: "{{ ad_directory_domain_admin_user | default(omit, true) }}"
+    domain_password: "{{ ad_directory_domain_admin_password | default(omit, true) }}"
+  loop: "{{ ad_directory_memberships }}"
+  loop_control:
+    label: "{{ item.group }} += {{ item.members | join(', ') }}"

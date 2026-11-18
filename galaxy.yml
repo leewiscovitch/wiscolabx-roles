@@ -3,7 +3,7 @@
 # each lab from git at a pinned commit; the dependencies are pinned to the versions the roles were written against.
 namespace: wiscolabx
 name: roles
-version: 0.3.0
+version: 0.4.0
 readme: README.md
 authors:
   - Lee Wiscovitch
