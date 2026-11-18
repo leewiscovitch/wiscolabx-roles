@@ -1,0 +1,26 @@
+---
+# The collection wiscolabx.roles: generic roles for shared Windows services (Active Directory first). Installed by
+# each lab from git at a pinned commit; the dependencies are pinned to the versions the roles were written against.
+namespace: wiscolabx
+name: roles
+version: 0.1.0
+readme: README.md
+authors:
+  - Lee Wiscovitch
+description: Generic roles for shared Windows services (Active Directory first), with no value of any one lab
+license:
+  - MIT
+tags:
+  - windows
+  - activedirectory
+dependencies:
+  microsoft.ad: "1.12.1"
+  ansible.windows: "3.9.2"
+repository: https://github.com/leewiscovitch/wiscolabx-roles
+issues: https://github.com/leewiscovitch/wiscolabx-roles/issues
+build_ignore:
+  - .git
+  - .gitignore
+  - .ansible-lint
+  - .ansible
+  - "*.tar.gz"

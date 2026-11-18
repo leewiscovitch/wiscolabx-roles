@@ -1,0 +1,8 @@
+---
+profile: production
+exclude_paths:
+  - .ansible/
+# meta/runtime.yml names the ansible-core the roles are written and tested against (2.22). ansible-lint 26.11 only
+# knows versions up to 2.19 as "supported" and would push the floor down to one nobody tested; a warning, not a stop.
+warn_list:
+  - meta-runtime[unsupported-version]

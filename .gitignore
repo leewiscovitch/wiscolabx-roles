@@ -1,0 +1,3 @@
+# ansible-lint's and ansible-galaxy's working folders, built collection archives
+.ansible/
+*.tar.gz
