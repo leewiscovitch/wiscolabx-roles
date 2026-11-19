@@ -1,0 +1,74 @@
+---
+# Reboot the machine over the session that is still open, with no new login before the reboot (README.md, step 2).
+# Used by main.yml's rescue after a demotion that worked and a module that failed after it: the session's token
+# belongs to a domain account the machine can no longer map, so anything that asks Windows to name the account
+# fails (CIM/WMI, which win_reboot uses to read the boot time first: its retry then resets the connection, and a
+# new login is refused until the reboot). What works over that session: plain PowerShell and starting a program.
+# Generic: it reboots any Windows machine the same way, which is how it is tested (on a member).
+
+# The uptime in milliseconds, from the kernel's tick counter (GetTickCount64; Windows PowerShell's .NET Framework has
+# no [Environment]::TickCount64): no CIM, no account lookup. Smaller afterwards means the machine has booted again.
+# The read before must not stop the reboot: without it, the new login that works afterwards is the evidence (a
+# demoted machine refuses one until it has rebooted)
+- name: Read the uptime before the reboot
+  ansible.windows.win_powershell:
+    script: |
+      Add-Type -Namespace AdDemote -Name Tick -MemberDefinition `
+          '[DllImport("kernel32.dll")] public static extern ulong GetTickCount64();'
+      [AdDemote.Tick]::GetTickCount64()
+  register: ad_demote_uptime_before
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Schedule the reboot over the open session
+  ansible.windows.win_command:
+    argv:
+      - C:\Windows\System32\shutdown.exe
+      - /r
+      - /t
+      - "{{ ad_demote_reboot_delay }}"
+      - /c
+      - Reboot after the demotion to a member server (role ad_demote)
+  register: ad_demote_shutdown
+  changed_when: ad_demote_shutdown.rc == 0
+  failed_when: false
+
+- name: Stop when Windows refused the reboot
+  ansible.builtin.fail:
+    msg:
+      - "shutdown.exe /r refused (rc {{ ad_demote_shutdown.rc }}): {{ ad_demote_shutdown.stderr | default('') | trim }}"
+      - >-
+        Reboot the machine from outside (its console or hypervisor) and run the role again: it then finds a member
+        server and changes nothing.
+  when: ad_demote_shutdown.rc != 0
+
+# The old session would answer until the machine goes down; closing it makes every later try a new login, which
+# only works once the machine has booted again (before, it is refused)
+- name: Drop the open session
+  ansible.builtin.meta: reset_connection
+
+- name: Wait for a new login to work (after the reboot)
+  ansible.builtin.wait_for_connection:
+    delay: "{{ ad_demote_reboot_delay | int + 10 }}"
+    sleep: 10
+    timeout: "{{ ad_demote_reboot_timeout }}"
+
+- name: Read the uptime after the reboot
+  ansible.windows.win_powershell:
+    script: |
+      Add-Type -Namespace AdDemote -Name Tick -MemberDefinition `
+          '[DllImport("kernel32.dll")] public static extern ulong GetTickCount64();'
+      [AdDemote.Tick]::GetTickCount64()
+  register: ad_demote_uptime_after
+  changed_when: false
+  check_mode: false
+
+- name: The machine booted again
+  ansible.builtin.assert:
+    that: (ad_demote_uptime_after.output[0] | int) < (ad_demote_uptime_before.output[0] | int)
+    fail_msg: >-
+      The machine answers but did not reboot (uptime {{ ad_demote_uptime_after.output[0] }} ms, before
+      {{ ad_demote_uptime_before.output[0] }} ms). Reboot it from outside and run the role again.
+    quiet: true
+  when: ad_demote_uptime_before.output[0] | default('') | string is match('^[0-9]+$')

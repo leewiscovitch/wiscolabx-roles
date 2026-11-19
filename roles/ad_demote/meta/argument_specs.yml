@@ -28,3 +28,9 @@ argument_specs:
         type: int
         default: 900
         description: Seconds to wait for the reboot and for the machine to report itself a member server.
+      ad_demote_reboot_delay:
+        type: int
+        default: 5
+        description:
+          - Seconds between shutdown.exe /r and the reboot when the role reboots the machine itself (a demotion that
+            worked and a module that failed after it).

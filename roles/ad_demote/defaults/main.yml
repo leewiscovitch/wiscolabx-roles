@@ -5,3 +5,6 @@
 # member server. A demotion takes about two minutes with its reboot; a failed login after the reboot only shows when
 # this runs out.
 ad_demote_reboot_timeout: 900
+# Seconds between shutdown.exe /r and the reboot, when the role reboots the machine itself (a demotion that worked
+# and a module that failed after it, tasks/reboot.yml): long enough for the command to return over the session.
+ad_demote_reboot_delay: 5

@@ -28,8 +28,9 @@
 # A demotion that worked can still fail the module at its very end ("No mapping between account names and security
 # IDs was done": the session's token is a domain account's, which the machine can no longer map), before the
 # reboot. When the log says the machine is no longer a controller and the machine says so too (ProductType
-# ServerNT), the rescue reboots it over the session that is still open (a new login before the reboot fails: no
-# domain answers on the machine, and a controller had no local accounts); the wait below decides as after a clean run
+# ServerNT), the rescue reboots it over the session that is still open, with shutdown.exe (tasks/reboot.yml: a new
+# login before the reboot fails: no domain answers on the machine, and a controller had no local accounts); the
+# wait below decides as after a clean run
 - name: The demotion
   block:
     - name: Demote to a member server and reboot (a machine that is no controller is left alone)
@@ -86,10 +87,10 @@
             error is hidden by no_log) and did not reboot. Rebooting it now.
           - "{{ ad_demote_dcpromo_log.output }}"
 
-    - name: Reboot it (the module did not)
-      ansible.windows.win_reboot:
-        reboot_timeout: "{{ ad_demote_reboot_timeout }}"
-        msg: Reboot after the demotion to a member server (role ad_demote)
+    # Not win_reboot: it reads the boot time through CIM first, which fails on this session's token, and its retry
+    # opens a new login, which the machine refuses until it has rebooted (tasks/reboot.yml)
+    - name: Reboot it over the open session (the module did not)
+      ansible.builtin.include_tasks: reboot.yml
 
 - name: What would be done (check mode)
   ansible.builtin.debug:

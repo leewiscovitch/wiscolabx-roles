@@ -25,6 +25,7 @@ alone, so a second run changes nothing. The AD DS feature stays installed.
 | `ad_demote_domain_admin_password` | yes, secret | | that user's password |
 | `ad_demote_local_admin_password` | yes, secret | | the password the local `Administrator` gets back once the machine is no controller |
 | `ad_demote_reboot_timeout` | no | `900` | seconds to wait for the reboot and for the machine to report itself a member server |
+| `ad_demote_reboot_delay` | no | `5` | seconds between `shutdown.exe /r` and the reboot, when the role reboots the machine itself (below) |
 
 The argument spec (`meta/argument_specs.yml`) stops a run that lacks one. The local `Administrator` password is
 checked before anything is done (at least 8 characters, from three of upper case, lower case, digits and other
@@ -65,12 +66,20 @@ yet). Preparing that is the caller's: otherwise the demotion works, but the modu
    account's, which the machine no longer maps), and then it does not reboot. The role reads the log and the
    machine's product type; when the log says "This machine is no longer a domain controller" and the product type
    is `ServerNT` (a controller's is `LanmanNT`), it reboots the machine over the session still open and goes on as
-   after a clean run. By hand, the same check and the reboot:
+   after a clean run (`tasks/reboot.yml`).
+
+   **Not with `win_reboot`** (tried in 0.5.1, `UNREACHABLE` on a real demotion): it first reads the boot time through
+   CIM (`Win32_OperatingSystem`), which fails on that session's token; its retry resets the connection, and the new
+   login is refused (no domain vouches for the account any more, and the machine has no local one but
+   `Administrator`). So the role reads the uptime with the kernel's `GetTickCount64` (no CIM), runs
+   `shutdown.exe /r /t 5` over the open session, drops the session, waits until a new login works (only after the
+   reboot), and checks the uptime went down. If the read before fails too, the login that works is the evidence.
+   If `shutdown.exe` refuses, it says to reboot from outside. By hand, the same check and the reboot:
 
    ```powershell
    Get-Content C:\Windows\debug\dcpromo.log -Tail 15        # "This machine is no longer a domain controller"
    (Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\ProductOptions).ProductType   # ServerNT
-   Restart-Computer -Force
+   shutdown.exe /r /t 5        # Restart-Computer goes through CIM, which this session's token fails
    ```
 
    A new login before that reboot fails (no domain answers on the machine, and it has no local account yet but
