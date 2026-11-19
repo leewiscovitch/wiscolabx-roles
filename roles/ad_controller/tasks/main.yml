@@ -28,6 +28,19 @@
     include_management_tools: true
     state: present
 
+# DomainRole: 0-1 workgroup, 2-3 a member, 4-5 a controller. Read locally
+- name: Read the machine's domain role
+  ansible.windows.win_powershell:
+    script: (Get-CimInstance Win32_ComputerSystem).DomainRole
+  register: ad_controller_role
+  changed_when: false
+  check_mode: false
+
+# A machine that is no controller yet joins first and waits for its account on every controller (tasks/join.yml)
+- name: The join before the promotion
+  ansible.builtin.include_tasks: join.yml
+  when: (ad_controller_role.output[0] | int) < 4
+
 # no_log hides the error with the passwords; the rescue reads the promotion's own log instead (it holds none)
 - name: The promotion
   block:

@@ -6,3 +6,6 @@
 # comes only with the first replication from a partner, and a failed login after the reboot only shows when this
 # runs out.
 ad_controller_ready_timeout: 1800
+# How long to wait, in seconds, after the join for every controller to have this machine's account with the same
+# password (replication within a site takes seconds; between sites up to the link's schedule).
+ad_controller_account_timeout: 600

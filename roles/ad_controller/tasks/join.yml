@@ -1,0 +1,97 @@
+---
+# The machine into the domain as a member first, then wait until every controller has its account with the same
+# password, so the promotion finds the account wherever it asks (README.md, step 2).
+# Why: a promotion from a workgroup joins the machine itself, on one controller, and seconds later asks the
+# locator for "a controller that holds this account". The locator may name another controller that has not had the
+# new account replicated in yet (up to 15 s between partners in a site); the promotion then fails with "DCPromo
+# exited with 53 ... Access is denied" and its rollback can't unjoin either. A join of its own, a reboot and a wait
+# leave nothing to that race.
+
+# no_log hides the error with the password; the rescue reads the join's own log instead (it holds none)
+- name: The join
+  block:
+    - name: Join the domain as a member and reboot (a member already is left alone)
+      microsoft.ad.membership:
+        state: domain
+        dns_domain_name: "{{ ad_controller_domain }}"
+        domain_admin_user: "{{ ad_controller_domain_admin_user }}"
+        domain_admin_password: "{{ ad_controller_domain_admin_password }}"
+        reboot: true
+        reboot_timeout: "{{ ad_controller_ready_timeout }}"
+      register: ad_controller_join
+      no_log: true
+  rescue:
+    - name: Read the end of the join's log
+      ansible.windows.win_powershell:
+        script: |
+          $f = "$env:SystemRoot\debug\NetSetup.LOG"
+          if (Test-Path $f) { Get-Content $f -Tail 20 } else { "no $f" }
+      register: ad_controller_netsetup_log
+      changed_when: false
+      check_mode: false
+      ignore_unreachable: true
+
+    - name: Say why it failed
+      ansible.builtin.fail:
+        msg:
+          - Joining this machine to {{ ad_controller_domain }} before its promotion failed (the module's error is hidden by no_log).
+          - "The end of C:\\Windows\\debug\\NetSetup.LOG:"
+          - "{{ ad_controller_netsetup_log.output | default(['the machine did not answer: the reboot or the login after it']) }}"
+
+# Every controller the domain lists, asked over LDAP with the domain admin's credentials: does it have this
+# machine's account, and with which pwdLastSet (the join sets the password; the same value everywhere means the
+# password has reached each one). Plain .NET (System.DirectoryServices), so no module needs to be installed. The
+# secret is a parameter, never in the output; the output is one line per controller
+- name: Wait until every controller has this machine's account with the same password
+  ansible.windows.win_powershell:
+    parameters:
+      Domain: "{{ ad_controller_domain }}"
+      User: "{{ ad_controller_domain_admin_user }}"
+      Password: "{{ ad_controller_domain_admin_password }}"
+    script: |
+      param([string]$Domain, [string]$User, [string]$Password)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $name = $env:COMPUTERNAME
+      $ctx = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain, $User, $Password)
+      $dcs = @([System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($ctx).DomainControllers | ForEach-Object Name)
+      $seen = [ordered]@{}
+      foreach ($dc in $dcs) {
+          try {
+              $root = New-Object System.DirectoryServices.DirectoryEntry("LDAP://$dc", $User, $Password)
+              $s = New-Object System.DirectoryServices.DirectorySearcher($root,
+                  "(&(objectCategory=computer)(sAMAccountName=$name`$))", [string[]]@('pwdLastSet'))
+              $r = $s.FindOne()
+              $seen[$dc] = if ($r) { [string]$r.Properties['pwdlastset'][0] } else { 'no account yet' }
+          } catch {
+              $seen[$dc] = 'no answer: ' + $_.Exception.Message.Trim()
+          }
+      }
+      $values = @($seen.Values | Sort-Object -Unique)
+      [ordered]@{
+          ready = $dcs.Count -gt 0 -and $values.Count -eq 1 -and $values[0] -match '^[1-9][0-9]*$'
+          controllers = $seen
+      }
+  register: ad_controller_joined
+  until: ad_controller_joined.output[0].ready | default(false)
+  retries: "{{ (ad_controller_account_timeout | int / 10) | round(0, 'ceil') | int }}"
+  delay: 10
+  failed_when: false
+  check_mode: false
+  no_log: true
+  when: not (ansible_check_mode and ad_controller_join is changed)
+
+- name: Every controller has the account
+  ansible.builtin.assert:
+    that: ad_controller_joined.output[0].ready | default(false)
+    fail_msg:
+      - >-
+        Not every controller had this machine's account with the same password after
+        {{ ad_controller_account_timeout }} s; the promotion would race replication. Per controller (pwdLastSet, or
+        why not):
+      - "{{ ad_controller_joined.output[0].controllers | default(ad_controller_joined.msg | default('no output')) | to_json }}"
+      - >-
+        Check replication (repadmin /replsummary on a controller) and that every controller answers, then run again
+        (the join is done and stays).
+    quiet: true
+  when: not (ansible_check_mode and ad_controller_join is changed)

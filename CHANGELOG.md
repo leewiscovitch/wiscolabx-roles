@@ -3,6 +3,19 @@
 Newest first. The version is `galaxy.yml`'s; each lab installs the collection at a commit, so a change that
 alters a role's variables or behaviour also says so here.
 
+## 0.6.0 (2026-11-19)
+
+- `ad_controller`: a machine that is no controller yet first joins the domain as a member (with its reboot) and
+  waits until every controller has its account with the same `pwdLastSet` before the promotion. A promotion from a
+  workgroup raced replication on a real rotation ("DCPromo exited with 53 ... Access is denied"). New variable
+  `ad_controller_account_timeout` (600); `ad_controller_ready_timeout` also bounds the join's reboot. The login
+  Ansible uses must work on a member too (a local one does: the join keeps local accounts)
+- `ad_demote`: after a demotion that worked and a module that failed after it, the reboot no longer uses
+  `win_reboot` (its CIM read of the boot time fails on the session's token and its retry needs a new login, which
+  the machine refuses: `UNREACHABLE` on a real demotion). Instead `shutdown.exe /r` over the open session, a wait
+  for a new login, and an uptime check (`tasks/reboot.yml`; tested on a member). New variable
+  `ad_demote_reboot_delay` (5)
+
 ## 0.5.1 (2026-11-19)
 
 - `ad_demote`: when the module fails after a demotion that worked ("No mapping between account names and security

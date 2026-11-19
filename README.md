@@ -32,7 +32,7 @@ Each with its own `README.md` (variables, and the steps by hand it stands for):
 | Role | Runs on | Does |
 |---|---|---|
 | `ad_forest` | the first controller | a new forest, its DNS, the reboot |
-| `ad_controller` | each further controller | promotion into the existing domain, replication |
+| `ad_controller` | each further controller | joins as a member, waits for the account on every controller, then the promotion into the existing domain, replication |
 | `ad_dns` | controllers | DNS forwarders, scavenging |
 | `ad_time` | controllers | the PDC emulator follows given NTP servers; the others follow the domain |
 | `ad_directory` | one controller | OUs, groups, users and memberships from a variable |
