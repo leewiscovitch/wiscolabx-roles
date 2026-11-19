@@ -82,8 +82,10 @@ caller's.
 
 ## What goes wrong
 
-- **It holds a role**: the module stops before it starts (`... operation master role(s) ... assigned`); the role
-  says to check `netdom query fsmo`. Move the roles, run again
+- **It holds a role**: the module stops before it starts, naming the roles (`This domain controller has operation
+  master role(s) (...) assigned`: the run shows that line, it holds no password); the role adds the end of
+  `dcpromo.log`, which is then an older operation's, and says to check `netdom query fsmo`. Move the roles, run
+  again
 - **No partner answers, or replication fails**: `dcpromo.log` says it could not replicate or reach a controller.
   Fix replication first (`repadmin /replsummary` on each controller)
 - **The login after the reboot fails**: the demotion is done, the wait runs out. Log in another way, check
