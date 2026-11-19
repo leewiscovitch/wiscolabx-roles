@@ -37,6 +37,7 @@ Each with its own `README.md` (variables, and the steps by hand it stands for):
 | `ad_time` | controllers | the PDC emulator follows given NTP servers; the others follow the domain |
 | `ad_directory` | one controller | OUs, groups, users and memberships from a variable |
 | `ad_member` | members | joins the domain into a given OU |
+| `ad_demote` | a controller to retire | demotes it to a member server, the reboot (not the last controller, not a role holder) |
 
 ## Using it
 
@@ -57,7 +58,8 @@ whether a machine is a new forest or joins. One way, the order this collection w
 6. `ad_member` on the members
 
 **Not in the roles**, because they differ per environment or need a person's yes: moving or seizing the FSMO
-roles, removing a dead controller's objects (metadata cleanup), demotion, the machines themselves. The lab that
+roles, removing a dead controller's objects (metadata cleanup), the machines themselves. `ad_demote` demotes a
+running controller; deciding when, and moving its roles away first, stay the caller's. The lab that
 uses them keeps those as a runbook.
 
 **The same roles elsewhere.** The home lab reaches its Windows machines over OpenSSH; the AWS version of the same

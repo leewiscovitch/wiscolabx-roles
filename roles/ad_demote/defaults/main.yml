@@ -1,0 +1,7 @@
+---
+# Required, no default (meta/argument_specs.yml): ad_demote_domain_admin_user, ad_demote_domain_admin_password,
+# ad_demote_local_admin_password.
+# How long to wait, in seconds, for the machine to come back after the demotion's reboot and to report itself a
+# member server. A demotion takes about two minutes with its reboot; a failed login after the reboot only shows when
+# this runs out.
+ad_demote_reboot_timeout: 900

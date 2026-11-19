@@ -3,6 +3,12 @@
 Newest first. The version is `galaxy.yml`'s; each lab installs the collection at a commit, so a change that
 alters a role's variables or behaviour also says so here.
 
+## 0.5.0 (2026-11-19)
+
+- New role `ad_demote`: a running controller to a member server of its domain, with the reboot; waits until the
+  machine reports itself a member server; checks the local Administrator password before it starts; reads
+  `dcpromo.log` when it fails. Not for the last controller nor a holder of an operation master role
+
 ## 0.4.0 (2026-11-18)
 
 - New role `ad_directory`: OUs, groups, users (the password only when one is made) and members added to groups;

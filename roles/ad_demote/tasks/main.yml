@@ -1,0 +1,77 @@
+---
+# Demote this controller to a member server of its domain (README.md). The demotion takes the domain admin as its
+# own arguments; every read after it is local, so the key or password session Ansible has is enough.
+
+# The argument spec (meta/argument_specs.yml) has already stopped a run that lacks a variable. Here the one rule it
+# can't check: a local Administrator password Windows would refuse, which it only says deep inside the demotion (and a
+# no_log task hides that). The check yields a yes or no, never the value
+- name: Check the local Administrator password's length and character classes
+  ansible.builtin.set_fact:
+    ad_demote_password_ok: >-
+      {{ ad_demote_local_admin_password | length >= 8 and
+         ([ad_demote_local_admin_password is search('[A-Z]'), ad_demote_local_admin_password is search('[a-z]'),
+           ad_demote_local_admin_password is search('[0-9]'),
+           ad_demote_local_admin_password is search('[^A-Za-z0-9]')] | select | list | length) >= 3 }}
+  no_log: true
+
+- name: The local Administrator password is one Windows accepts
+  ansible.builtin.assert:
+    that: ad_demote_password_ok | bool
+    fail_msg: >-
+      ad_demote_local_admin_password is not one Windows accepts: it wants at least 8 characters from three of upper
+      case, lower case, digits and other characters (the value is not shown)
+    quiet: true
+
+# no_log hides the error with the passwords; the rescue reads the demotion's own log instead (it holds none). The
+# module itself refuses a holder of an operation master role before it starts: that message is in its error, so the
+# rescue says to check the roles too
+- name: The demotion
+  block:
+    - name: Demote to a member server and reboot (a machine that is no controller is left alone)
+      microsoft.ad.domain_controller:
+        state: member_server
+        domain_admin_user: "{{ ad_demote_domain_admin_user }}"
+        domain_admin_password: "{{ ad_demote_domain_admin_password }}"
+        local_admin_password: "{{ ad_demote_local_admin_password }}"
+        reboot: true
+        reboot_timeout: "{{ ad_demote_reboot_timeout }}"
+      register: ad_demote_demotion
+      no_log: true
+  rescue:
+    - name: Read the end of the demotion's log
+      ansible.windows.win_powershell:
+        script: |
+          $f = "$env:SystemRoot\debug\dcpromo.log"
+          if (Test-Path $f) { Get-Content $f -Tail 15 } else { "no $f" }
+      register: ad_demote_dcpromo_log
+      changed_when: false
+      check_mode: false
+      ignore_unreachable: true
+
+    - name: Say why it failed
+      ansible.builtin.fail:
+        msg:
+          - Demoting this controller failed (the module's error is hidden by no_log).
+          - >-
+            If the log below says nothing new, check whether this controller still holds an operation master role
+            (netdom query fsmo): the module refuses one before it starts, and writes no log for that.
+          - "The end of C:\\Windows\\debug\\dcpromo.log:"
+          - "{{ ad_demote_dcpromo_log.output | default(['the machine did not answer: the reboot or the login after it']) }}"
+
+- name: What would be done (check mode)
+  ansible.builtin.debug:
+    msg: Would demote this machine to a member server of its domain and reboot it
+  when: ansible_check_mode and ad_demote_demotion is changed
+
+# Done means: the machine reports itself a member server (DomainRole 3), not a controller (4 or 5). Read locally
+- name: Wait until the machine is a member server
+  ansible.windows.win_powershell:
+    script: |
+      (Get-CimInstance Win32_ComputerSystem).DomainRole
+  register: ad_demote_role
+  until: ad_demote_role.output[0] | int == 3
+  retries: "{{ (ad_demote_reboot_timeout | int / 10) | round(0, 'ceil') | int }}"
+  delay: 10
+  changed_when: false
+  check_mode: false
+  when: ad_demote_demotion is changed and not ansible_check_mode
