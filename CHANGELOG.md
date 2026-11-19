@@ -3,6 +3,13 @@
 Newest first. The version is `galaxy.yml`'s; each lab installs the collection at a commit, so a change that
 alters a role's variables or behaviour also says so here.
 
+## 0.5.1 (2026-11-19)
+
+- `ad_demote`: when the module fails after a demotion that worked ("No mapping between account names and security
+  IDs was done", seen on a real demotion), and both `dcpromo.log` ("no longer a domain controller") and the
+  machine's product type (`ServerNT`) say so, the role reboots the machine itself and passes once it is a member
+  server, instead of failing unrebooted. No variable changed
+
 ## 0.5.0 (2026-11-19)
 
 - New role `ad_demote`: a running controller to a member server of its domain, with the reboot; waits until the

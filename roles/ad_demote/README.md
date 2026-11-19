@@ -60,6 +60,23 @@ yet). Preparing that is the caller's: otherwise the demotion works, but the modu
    for the reboot. The DNS server service and the AD DS binaries stay. If it fails, the reason is at the end of
    `C:\Windows\debug\dcpromo.log`; the role reads that out (the module's own error is hidden with the passwords).
 
+   **A demotion that worked and a module that failed after it.** The module can fail at its very end, after the
+   demotion, with "No mapping between account names and security IDs was done" (the session's token is a domain
+   account's, which the machine no longer maps), and then it does not reboot. The role reads the log and the
+   machine's product type; when the log says "This machine is no longer a domain controller" and the product type
+   is `ServerNT` (a controller's is `LanmanNT`), it reboots the machine over the session still open and goes on as
+   after a clean run. By hand, the same check and the reboot:
+
+   ```powershell
+   Get-Content C:\Windows\debug\dcpromo.log -Tail 15        # "This machine is no longer a domain controller"
+   (Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\ProductOptions).ProductType   # ServerNT
+   Restart-Computer -Force
+   ```
+
+   A new login before that reboot fails (no domain answers on the machine, and it has no local account yet but
+   `Administrator`); if the session is gone too, the role says so, and the machine is rebooted from outside (its
+   console or hypervisor). Run the role again after: it finds a member server and changes nothing.
+
 3. Waits until the machine is a member server, with a local read:
 
    ```powershell

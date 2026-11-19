@@ -24,7 +24,12 @@
 
 # no_log hides the error with the passwords; the rescue reads the demotion's own log instead (it holds none). The
 # module itself refuses a holder of an operation master role before it starts: that message is in its error, so the
-# rescue says to check the roles too
+# rescue says to check the roles too.
+# A demotion that worked can still fail the module at its very end ("No mapping between account names and security
+# IDs was done": the session's token is a domain account's, which the machine can no longer map), before the
+# reboot. When the log says the machine is no longer a controller and the machine says so too (ProductType
+# ServerNT), the rescue reboots it over the session that is still open (a new login before the reboot fails: no
+# domain answers on the machine, and a controller had no local accounts); the wait below decides as after a clean run
 - name: The demotion
   block:
     - name: Demote to a member server and reboot (a machine that is no controller is left alone)
@@ -43,10 +48,20 @@
         script: |
           $f = "$env:SystemRoot\debug\dcpromo.log"
           if (Test-Path $f) { Get-Content $f -Tail 15 } else { "no $f" }
+          # LanmanNT: a controller; ServerNT: a server that is none (set by the demotion, before the reboot)
+          "ProductType: " + (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ProductOptions').ProductType
       register: ad_demote_dcpromo_log
       changed_when: false
       check_mode: false
       ignore_unreachable: true
+
+    - name: Record whether the demotion itself was done
+      ansible.builtin.set_fact:
+        ad_demote_done_by_log: >-
+          {{ ad_demote_dcpromo_log is not unreachable
+             and (ad_demote_dcpromo_log.output | default([]) | join('\n'))
+                 is search('no longer a domain controller', ignorecase=true)
+             and 'ProductType: ServerNT' in ad_demote_dcpromo_log.output | default([]) }}
 
     - name: Say why it failed
       ansible.builtin.fail:
@@ -55,8 +70,26 @@
           - >-
             If the log below says nothing new, check whether this controller still holds an operation master role
             (netdom query fsmo): the module refuses one before it starts, and writes no log for that.
+          - >-
+            If the machine did not answer: read the end of C:\Windows\debug\dcpromo.log on its console; when it
+            says "This machine is no longer a domain controller", the demotion was done: reboot the machine from
+            outside (its hypervisor) and run the role again (it then finds a member server and changes nothing).
           - "The end of C:\\Windows\\debug\\dcpromo.log:"
           - "{{ ad_demote_dcpromo_log.output | default(['the machine did not answer: the reboot or the login after it']) }}"
+      when: not ad_demote_done_by_log | bool
+
+    - name: The demotion was done and the module failed after it, say so
+      ansible.builtin.debug:
+        msg:
+          - >-
+            dcpromo.log and ProductType say this machine is no longer a domain controller, but the module failed after it (its
+            error is hidden by no_log) and did not reboot. Rebooting it now.
+          - "{{ ad_demote_dcpromo_log.output }}"
+
+    - name: Reboot it (the module did not)
+      ansible.windows.win_reboot:
+        reboot_timeout: "{{ ad_demote_reboot_timeout }}"
+        msg: Reboot after the demotion to a member server (role ad_demote)
 
 - name: What would be done (check mode)
   ansible.builtin.debug:
@@ -74,4 +107,4 @@
   delay: 10
   changed_when: false
   check_mode: false
-  when: ad_demote_demotion is changed and not ansible_check_mode
+  when: (ad_demote_demotion is changed or ad_demote_done_by_log | default(false) | bool) and not ansible_check_mode
